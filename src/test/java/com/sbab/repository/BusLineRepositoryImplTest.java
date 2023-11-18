@@ -1,292 +1,221 @@
 package com.sbab.repository;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sbab.model.ModelBase;
-import com.sbab.model.ResponseData;
 import com.sbab.model.datamodel.JourneyPatternPointOnLine;
 import com.sbab.model.datamodel.Line;
 import com.sbab.model.datamodel.StopPoint;
-import okhttp3.*;
+import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.Spy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @ContextConfiguration(classes = BusLineRepositoryImplTest.TestConfig.class)
-/*@TestPropertySource(properties = {
-
-               /* "api.key=test-key",
-                "api.url=https://api.test.com/test?key=${api.key}",
-                "line.url=${api.url}&model=line&DefaultTransportModeCode=BUS",
-                "stop.point.url=${api.url}&model=stop",
-                "journey.pattern.url=${api.url}&model=jour&DefaultTransportModeCode=BUS"*/
-
-/*
-        "api.key=23eb6d33db5543ac867804ad31d9b65f",
-        "api.url=https://api.sl.se/api2/linedata.json?key=${api.key}",
-        "line.url=${api.url}&model=line&DefaultTransportModeCode=BUS",
-        "stop.point.url=${api.url}&model=stop",
-        "journey.pattern.url=${api.url}&model=jour&DefaultTransportModeCode=BUS"*/
-
-//})*/
-
-class BusLineRepositoryImplTest {
-
-    @Mock
-    private OkHttpClient okHttpClient;
-
-    @Spy
-    private ObjectMapper objectMapper;
-
-    @Mock
-    private Response response;
-
-    @Mock
-    private ResponseBody responseBody;
-
-    @Mock
-    private Call call;
-
-    @InjectMocks
-    private BusLineRepositoryImpl busLineRepository;
-
+public class BusLineRepositoryImplTest {
     @Autowired
     private Environment environment;
-
-    @Spy
-    private ModelBase modelBase;
+    @Mock
+    private OkHttpClient okHttpClient;
+    @InjectMocks
+    private BusLineRepositoryImpl busLineRepository;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+
+        ReflectionTestUtils.setField(busLineRepository, "apiKey", environment.getProperty("api.key"));
+        ReflectionTestUtils.setField(busLineRepository, "line_Url", environment.getProperty("line.url"));
+        ReflectionTestUtils.setField(busLineRepository, "stop_Url", environment.getProperty("stop.point.url"));
+        ReflectionTestUtils.setField(busLineRepository, "journey_Url", environment.getProperty("journey.pattern.url"));
     }
 
     @Test
     void testGetAllLines() throws IOException {
-        // Arrange
-        String url = environment.getProperty("line.url");
-        TypeReference<ResponseData<Line>> typeReference = new TypeReference<>() {};
-        ResponseData<Line> responseData = new ResponseData<>();
-        Line line = new Line();
-        line.setLineNumber(1);
-        line.setLineDesignation("LineA");
-        line.setDefaultTransportMode("blåbuss");
-        line.setDefaultTransportModeCode("BUS");
-        line.setLastModifiedUtcDateTime("2021-03-01T00:00:00");
-        line.setExistsFromDate("2021-03-01T00:00:00");
+        when(okHttpClient.newCall(any(Request.class))).thenAnswer(invocation -> {
+            return new okhttp3.Response.Builder()
+                    .protocol(okhttp3.Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .request(invocation.getArgument(0))
+                    .body(okhttp3.ResponseBody.create(mockLineResponse(), null))
+                    .build();
+        });
 
-        responseData.setResult(Collections.singletonList(line));
-
-        assert url != null;
-
-        // Mock the Call interface
-        Call call = mock(Call.class);
-
-        // Create a Response object
-        Response response = new Response.Builder()
-                .request(new Request.Builder().url(url).build())
-                .protocol(Protocol.HTTP_1_1)
-                .code(200)
-                .message("OK")
-                .body(ResponseBody.create("", MediaType.parse("application/json")))
-                .build();
-
-        // Configure the mockito behavior
-        doReturn(call).when(okHttpClient).newCall(any());
-        doReturn(response).when(call).execute();
-        doReturn(responseData).when(objectMapper).readValue(anyString(), any(TypeReference.class));
-
-        // Act
         Collection<Line> result = busLineRepository.getAllLines();
 
-        // Assert
-        verify(okHttpClient, times(1)).newCall(any());
-        verify(call, times(1)).execute();  // Verify that execute() is called on the mocked Call
-        verify(objectMapper, times(1)).readValue(anyString(), any(TypeReference.class));
-        assertEquals(1, result.size());
+        List<Line> expectedLines = List.of(createLine());
+
+        assertEquals(expectedLines, filterLines(result, 1));
+        assertNotEquals(expectedLines, filterLines(result, 101));
     }
 
-
-   /* @Test
-    void testGetAllStopPoints() throws IOException {
-        // Arrange
-        String url = environment.getProperty("stop.point.url");
-        TypeReference<ResponseData<StopPoint>> typeReference = new TypeReference<>() {};
-
-        // Create a mock ResponseData object with non-null values
-        StopPoint stopPoint = new StopPoint();
-        // Set properties of stopPoint as needed
-        stopPoint.setStopPointNumber(1);
-        stopPoint.setStopPointName("StopA");
-
-        ResponseData<StopPoint> responseData = new ResponseData<>();
-        responseData.setResult(Collections.singletonList(stopPoint));
-
-        // Create a mock Response object
-        assert url != null;
-        Response response = new Response.Builder()
-                .request(new Request.Builder().url(url).build())
-                .protocol(Protocol.HTTP_1_1)
-                .code(200)
-                .message("OK")
-                .body(ResponseBody.create(objectMapper.writeValueAsString(responseData), MediaType.parse("application/json")))
-                .build();
-
-        // Use doReturn to specify the behavior of newCall
-        doReturn(mockCall(response)).when(okHttpClient).newCall(any());
-
-        // Act
-        Collection<StopPoint> result = busLineRepository.getAllStopPoints();
-
-        // Assert
-        verify(okHttpClient, times(1)).newCall(any());
-        assertEquals(1, result.size());
+    private String mockLineResponse() {
+        return "{\"responseData\": {\"result\": " +
+                "[{\"lineNumber\": 1, \"lineDesignation\": 1, \"defaultTransportMode\": \"blåbuss\", " +
+                "\"defaultTransportModeCode\": \"BUS\", \"lastModifiedUtcDateTime\": \"2007-08-24 00:00:00.000\", " +
+                "\"existsFromDate\": \"2007-08-24 00:00:00.000\"}," +
+                "{\"lineNumber\": 101, \"lineDesignation\": 101, \"defaultTransportMode\": \"some_mode\", " +
+                "\"defaultTransportModeCode\": \"BUS\", \"lastModifiedUtcDateTime\": \"2023-06-08 00:00:00.000\", " +
+                "\"existsFromDate\": \"2023-06-08 00:00:00.000\"}]}}";
     }
-    */
 
-    // Helper method to create a mock Call object
-    private Call mockCall(Response response) throws IOException {
-        Call call = mock(Call.class);
-        doReturn(response).when(call).execute();
-        return call;
+    private Line createLine() {
+        Line line = new Line();
+        line.setLineNumber(1);
+        line.setLineDesignation("1");
+        line.setDefaultTransportMode("blåbuss");
+        line.setDefaultTransportModeCode("BUS");
+        line.setLastModifiedUtcDateTime("2007-08-24 00:00:00.000");
+        line.setExistsFromDate("2007-08-24 00:00:00.000");
+        return line;
     }
+
+    private List<Line> filterLines(Collection<Line> lines, int lineNumber) {
+        return lines.stream()
+                .filter(line -> line.getLineNumber() == lineNumber)
+                .collect(Collectors.toList());
+    }
+
     @Test
     void testGetAllStopPoints() throws IOException {
-        // Arrange
-        String url = environment.getProperty("stop.point.url");
-        TypeReference<ResponseData<StopPoint>> typeReference = new TypeReference<>() {};
-
-        // Create a mock ResponseData object with non-null values
-        StopPoint stopPoint = new StopPoint();
-        // Set properties of stopPoint as needed
-        stopPoint.setStopPointNumber(1);
-        stopPoint.setStopPointName("StopA");
-
-        ResponseData<StopPoint> responseData = new ResponseData<>();
-        responseData.setResult(Collections.singletonList(stopPoint));
-
-        // Create a mock Response object
-        assert url != null;
-        Response response = new Response.Builder()
-                .request(new Request.Builder().url(url).build())
+        when(okHttpClient.newCall(any(Request.class))).thenAnswer(invocation -> new Response.Builder()
                 .protocol(Protocol.HTTP_1_1)
                 .code(200)
                 .message("OK")
-                .body(ResponseBody.create(objectMapper.writeValueAsString(responseData), MediaType.parse("application/json")))
-                .build();
+                .request(invocation.getArgument(0))
+                .body(ResponseBody.create(mockStopPointsResponse(), null))
+                .build());
 
-        // Use doReturn to specify the behavior of newCall
-        doReturn(mockCall(response)).when(okHttpClient).newCall(any());
-
-        // Act
         Collection<StopPoint> result = busLineRepository.getAllStopPoints();
 
-        // Assert
-        verify(okHttpClient, times(1)).newCall(any());
-        assertEquals(1, result.size());
+        List<StopPoint> expectedStopPoints = List.of(createStopPoint());
+
+        assertEquals(expectedStopPoints, filterStopPoints(result, 63305));
+        assertNotEquals(expectedStopPoints, filterStopPoints(result, 12345));
+
+        assertEquals(expectedStopPoints.size(), filterStopPoints(result, 63305).size(), "Number of stop points is not as expected");
+        assertNotEquals(expectedStopPoints.size(), filterStopPoints(result, 12345).size(), "Number of stop points is as expected");
     }
 
+    private String mockStopPointsResponse() {
+        return "{\"responseData\": {\"result\": [" +
+                "{\"StopPointNumber\": 63305, \"StopPointName\": \"Skeppsmyra affär\", " +
+                "\"StopAreaNumber\": 63305, \"LocationNorthingCoordinate\": 59.828653999632, " +
+                "\"LocationEastingCoordinate\": 19.052825999832, \"ZoneShortName\": \"C\", " +
+                "\"StopAreaTypeCode\": \"BUSTERM\", \"LastModifiedUtcDateTime\": \"2022-08-22 00:00:00.000\", " +
+                "\"ExistsFromDate\": \"2022-08-22 00:00:00.000\"}," +
+                "{\"StopPointNumber\": 12345, \"StopPointName\": \"Example Stop\", " +
+                "\"StopAreaNumber\": 12345, \"LocationNorthingCoordinate\": 59.123456789, " +
+                "\"LocationEastingCoordinate\": 18.987654321, \"ZoneShortName\": \"A\", " +
+                "\"StopAreaTypeCode\": \"BUSSTOP\", \"LastModifiedUtcDateTime\": \"2022-08-23 00:00:00.000\", " +
+                "\"ExistsFromDate\": \"2022-08-23 00:00:00.000\"}]}}";
+    }
 
+    private StopPoint createStopPoint() {
+        StopPoint stopPoint = new StopPoint();
+        stopPoint.setStopPointNumber(63305);
+        stopPoint.setStopPointName("Skeppsmyra affär");
+        stopPoint.setStopAreaNumber(63305);
+        stopPoint.setLocationNorthingCoordinate(59.828653999632);
+        stopPoint.setLocationEastingCoordinate(19.052825999832);
+        stopPoint.setZoneShortName("C");
+        stopPoint.setStopAreaTypeCode("BUSTERM");
+        stopPoint.setLastModifiedUtcDateTime("2022-08-22 00:00:00.000");
+        stopPoint.setExistsFromDate("2022-08-22 00:00:00.000");
+        return stopPoint;
+    }
+
+    private List<StopPoint> filterStopPoints(Collection<StopPoint> stopPoints, int stopPointNumber) {
+        return stopPoints.stream()
+                .filter(stopPoint -> stopPoint.getStopPointNumber() == stopPointNumber)
+                .collect(Collectors.toList());
+    }
 
     @Test
     void testGetAllBusJourneyPatterns() throws IOException {
-        // Arrange
-        String url = environment.getProperty("journey.pattern.url");
-        TypeReference<ResponseData<JourneyPatternPointOnLine>> typeReference = new TypeReference<>() {};
-        ResponseData<JourneyPatternPointOnLine> responseData = new ResponseData<>();
-        responseData.setResult(Collections.singletonList(new JourneyPatternPointOnLine()));
+        when(okHttpClient.newCall(any(Request.class))).thenAnswer(invocation -> new Response.Builder()
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .request(invocation.getArgument(0))
+                .body(ResponseBody.create(mockJourneyPatternsResponse(), null))
+                .build());
 
-        // Use doReturn to specify the behavior of newCall
-        doReturn(call).when(okHttpClient).newCall(any());
-
-        // Use doReturn to specify the behavior of execute on the Call mock
-        doReturn(response).when(call).execute();
-        doReturn(responseData).when(objectMapper).readValue(anyString(), any(TypeReference.class));
-
-
-        // Act
         Collection<JourneyPatternPointOnLine> result = busLineRepository.getAllBusJourneyPatterns();
 
-        // Assert
-        verify(okHttpClient, times(1)).newCall(any());
-        verify(call, times(1)).execute(); // Verify execute on the Call mock
-        verify(objectMapper, times(1)).readValue(anyString(), any(TypeReference.class));
-        assertEquals(1, result.size());
+        List<JourneyPatternPointOnLine> expectedJourneyPatterns = List.of(createJourneyPatternPointOnLine());
+
+        assertEquals(expectedJourneyPatterns, filterJourneyPatterns(result, 1, 2, "2023-03-07 00:00:00.000"));
+        assertNotEquals(expectedJourneyPatterns, filterJourneyPatterns(result, 112, 1, "2012-06-23 00:00:00.000"));
     }
 
+    private String mockJourneyPatternsResponse() {
+        return "{\"responseData\": {\"result\": [" +
+                "{\"LineNumber\": 1, \"DirectionCode\": 2, \"JourneyPatternPointNumber\": 10065, " +
+                "\"LastModifiedUtcDateTime\": \"2023-03-07 00:00:00.000\", " +
+                "\"ExistsFromDate\": \"2023-03-07 00:00:00.000\"}," +
+                "{\"LineNumber\": 135, \"DirectionCode\": 1, \"JourneyPatternPointNumber\": 13476, " +
+                "\"LastModifiedUtcDateTime\": \"2012-06-23 00:00:00.000\", " +
+                "\"ExistsFromDate\": \"2012-06-23 00:00:00.000\"}]}}";
+    }
 
-    @Test
-    void testGetAllStopPointsGroupedByLineNumber() throws IOException {
-        // Arrange
-        String url = "test-journey-url";
-        TypeReference<ResponseData<JourneyPatternPointOnLine>> typeReference = new TypeReference<>() {
-        };
-        ResponseData<JourneyPatternPointOnLine> responseData = new ResponseData<>();
-        responseData.setResult(Collections.singletonList(new JourneyPatternPointOnLine()));
-        Response response = new Response.Builder()
-                .request(new Request.Builder().url(url).build())
-                .protocol(Protocol.HTTP_1_1)
-                .code(200)
-                .message("OK")
-                .body(ResponseBody.create("", MediaType.parse("application/json")))
-                .build();
-        doReturn(response).when(okHttpClient).newCall(any()).execute();
-        doReturn(responseData).when(objectMapper).readValue(anyString(), any(TypeReference.class));
+    private JourneyPatternPointOnLine createJourneyPatternPointOnLine() {
+        JourneyPatternPointOnLine journeyPatternPointOnLine = new JourneyPatternPointOnLine();
+        journeyPatternPointOnLine.setLineNumber(1);
+        journeyPatternPointOnLine.setDirectionCode(2);
+        journeyPatternPointOnLine.setJourneyPatternPointNumber(10065);
+        journeyPatternPointOnLine.setLastModifiedUtcDateTime("2023-03-07 00:00:00.000");
+        journeyPatternPointOnLine.setExistsFromDate("2023-03-07 00:00:00.000");
+        return journeyPatternPointOnLine;
+    }
 
-        // Act
-        Map<String, Collection<?>> result = busLineRepository.getStopPointsByLineNumber(1);
-
-        // Assert
-        verify(okHttpClient, times(1)).newCall(any());
-        verify(objectMapper, times(1)).readValue(anyString(), any(TypeReference.class));
-        assertEquals(1, result.size());
+    private List<JourneyPatternPointOnLine> filterJourneyPatterns(Collection<JourneyPatternPointOnLine> patterns, int lineNumber, int directionCode, String lastModifiedUtcDateTime) {
+        return patterns.stream()
+                .filter(pattern -> pattern.getLineNumber() == lineNumber &&
+                        pattern.getDirectionCode() == directionCode &&
+                        pattern.getLastModifiedUtcDateTime().equals(lastModifiedUtcDateTime))
+                .collect(Collectors.toList());
     }
 
     @Test
-    void testCollectData() throws IOException {
-        // Arrange
-        String url = "test-url";
-        TypeReference<ModelBase<Line>> typeReference = new TypeReference<>() {
-        };
-        ModelBase<Line> modelBase = new ModelBase<>();
-        modelBase.setResponseData(new ResponseData<>());
-        modelBase.getResponseData().setResult(Collections.singletonList(new Line()));
-        Response response = new Response.Builder()
-                .request(new Request.Builder().url(url).build())
-                .protocol(Protocol.HTTP_1_1)
-                .code(200)
-                .message("OK")
-                .body(ResponseBody.create("", MediaType.parse("application/json")))
-                .build();
-        doReturn(response).when(okHttpClient).newCall(any()).execute();
-        doReturn(modelBase).when(objectMapper).readValue(anyString(), any(TypeReference.class));
+    public void testGetStopPointsByLineNumber() throws IOException {
+        Integer topRanking = 4;
+        Map<String, Collection<?>> result = busLineRepository.getStopPointsByLineNumber(topRanking);
 
-        // Act
-        Collection<Line> result = busLineRepository.collectData(url, typeReference);
+        assertNotNull(result);
 
-        // Assert
-        verify(okHttpClient, times(1)).newCall(any());
-        verify(objectMapper, times(1)).readValue(anyString(), any(TypeReference.class));
-        assertEquals(1, result.size());
+        for (Map.Entry<String, Collection<?>> entry : result.entrySet()) {
+            assertNotNull(entry.getKey());
+            assertFalse(entry.getKey().isEmpty());
+
+            assertNotNull(entry.getValue());
+            assertFalse(entry.getValue().isEmpty());
+        }
+
+        assertEquals(topRanking, result.size());
     }
 
     @Configuration

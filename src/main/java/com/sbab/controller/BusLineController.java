@@ -12,7 +12,7 @@ import java.util.Collection;
 import java.util.Map;
 
 @RestController
-@RequestMapping(path = "/buslines", produces = "application/json")
+@RequestMapping(path = "/api/lines", produces = "application/json")
 public class BusLineController {
 
     @Autowired

@@ -31,7 +31,6 @@ import com.sbab.repository.BusLineRepository;
 @SpringJUnitConfig
 @ContextConfiguration(classes = BusLineServiceTest.TestConfig.class)
 public class BusLineServiceTest {
-
     @Mock
     private BusLineRepository busLineRepository;
     @InjectMocks

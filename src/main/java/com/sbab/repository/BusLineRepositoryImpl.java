@@ -3,7 +3,8 @@ package com.sbab.repository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sbab.model.ModelBase;
-import com.sbab.model.datamodel.*;
+import com.sbab.model.datamodel.Line;
+import com.sbab.model.datamodel.StopPoint;
 import okhttp3.OkHttpClient;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -73,9 +74,9 @@ public class BusLineRepositoryImpl implements BusLineRepository {
                         Map.Entry::getValue, (v1, v2) -> v1, java.util.LinkedHashMap::new));
     }
 
-    public Map<String, Collection<?>> getStopPointsByLineNumber(Integer topRanks) throws IOException {
+    public Map<String, Collection<?>> getStopPointsByLineNumber(Integer topRanking) throws IOException {
         Collection<StopPoint> allStopPoints = getAllStopPoints();
-        LinkedHashMap<Integer, Collection<JourneyPatternPointOnLine>> topJourneyPatterns = getBusJourneyPatternsByTopRank(topRanks);
+        LinkedHashMap<Integer, Collection<JourneyPatternPointOnLine>> topJourneyPatterns = getBusJourneyPatternsByTopRank(topRanking);
         Map<String, Collection<?>> sortedStopPointsByTopLines = new HashMap<>();
 
         for (Map.Entry<Integer, Collection<JourneyPatternPointOnLine>> entry : topJourneyPatterns.entrySet()) {
